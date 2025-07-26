@@ -41,7 +41,6 @@ def gmail_push():
 
         if not pubsub_message.get('data'):
             return 'No data in message', 400
-
         # Decode base64 message data
         data = base64.b64decode(pubsub_message['data']).decode('utf-8')
         message_data = json.loads(data)
@@ -58,6 +57,7 @@ def gmail_push():
 
         # Incremental fetch using historyId
         last_history_id = get_last_history_id()
+
 
         if last_history_id:
             print(f"Fetching changes since historyId: {last_history_id}")
@@ -76,9 +76,14 @@ def gmail_push():
 
             print(f"Found {len(messages)} new messages.")
             for msg in messages:
-                print("==========")
-                print(Data_Ingestion_Gmail.extract_text(service, msg['id']))
-
+                msg_detail = service.users().messages().get(userId='me', id=msg['id'], format='full').execute()
+                headers = msg_detail.get('payload', {}).get('headers', [])
+                subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), '').lower()
+                if any(keyword in subject for keyword in ['receipt', 'invoice', 'order']):
+                    print("==========")
+                    print(Data_Ingestion_Gmail.extract_text(service, msg['id']))
+                else:
+                    print(f"Mail with subject '{subject}' is not related to order details.")
         else:
             print("No last historyId found — skipping incremental fetch.")
 
@@ -96,6 +101,7 @@ def gmail_push():
 def watch_gmail():
     """Sets up the Gmail watch request."""
     service = Data_Ingestion_Gmail.authenticate()
+    print(f"watch gmail authentication is successful")
     try:
         request_body = {
             'topicName': PUBSUB_TOPIC,
@@ -117,5 +123,5 @@ if __name__ == '__main__':
     import threading
     gmail_watch_thread = threading.Thread(target=watch_gmail)
     gmail_watch_thread.start()
-
-    app.run(port=8080)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
